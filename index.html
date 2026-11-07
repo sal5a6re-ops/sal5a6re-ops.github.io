@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شاشتي</title>
+<style>
+  :root{--bg:#0b0d10;--card:#171a20;--card2:#1f232b;--txt:#f2f4f7;--muted:#8a93a3;--accent:#3e8bff;--danger:#ff4d5e}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;user-select:none}
+  body{display:flex;flex-direction:column;padding:28px 40px;gap:28px}
+  header{display:flex;align-items:center;justify-content:space-between}
+  .clock{font-size:64px;font-weight:300;letter-spacing:1px;line-height:1}
+  .date{color:var(--muted);font-size:22px;margin-top:6px}
+  .actions{display:flex;gap:14px}
+  button{font:inherit;color:var(--txt);background:var(--card2);border:0;border-radius:16px;padding:16px 26px;font-size:20px;cursor:pointer}
+  button.primary{background:var(--accent)}
+  button:active{transform:scale(.96)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:22px;align-content:start;flex:1;overflow:auto;padding-bottom:20px}
+  .tile{position:relative;background:var(--card);border-radius:28px;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;cursor:pointer;transition:transform .12s}
+  .tile:active{transform:scale(.94)}
+  .icon{width:88px;height:88px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:700;color:#fff}
+  .name{font-size:20px;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  .del{display:none;position:absolute;top:10px;left:10px;width:44px;height:44px;border-radius:50%;background:var(--danger);font-size:26px;line-height:44px;text-align:center}
+  .editing .del{display:block}
+  .editing .tile{animation:wig .3s infinite alternate}
+  @keyframes wig{from{transform:rotate(-1deg)}to{transform:rotate(1deg)}}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center}
+  .modal.open{display:flex}
+  .box{background:var(--card);border-radius:28px;padding:32px;width:min(560px,92vw);display:flex;flex-direction:column;gap:18px}
+  .box h2{font-size:28px;font-weight:500}
+  input{font:inherit;font-size:22px;background:var(--card2);color:var(--txt);border:0;border-radius:14px;padding:16px;width:100%;direction:ltr;text-align:right}
+  .colors{display:flex;gap:12px;flex-wrap:wrap}
+  .sw{width:52px;height:52px;border-radius:14px;cursor:pointer;border:3px solid transparent}
+  .sw.on{border-color:#fff}
+  .row{display:flex;gap:12px;justify-content:flex-start}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="clock" id="clock">--:--</div>
+    <div class="date" id="date"></div>
+  </div>
+  <div class="actions">
+    <button id="editBtn">تعديل</button>
+    <button class="primary" id="addBtn">+ إضافة</button>
+  </div>
+</header>
+
+<main class="grid" id="grid"></main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h2>إضافة تطبيق</h2>
+    <input id="fName" placeholder="الاسم (مثلاً: يوتيوب)" dir="rtl">
+    <input id="fUrl" placeholder="https://..." inputmode="url">
+    <input id="fIcon" placeholder="رمز أو إيموجي (اختياري)" dir="rtl" maxlength="2">
+    <div class="colors" id="colors"></div>
+    <div class="row">
+      <button class="primary" id="saveBtn">حفظ</button>
+      <button id="cancelBtn">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS=["#e53935","#fb8c00","#fdd835","#43a047","#00acc1","#1e88e5","#5e35b1","#d81b60","#6d4c41","#546e7a"];
+const DEFAULTS=[
+  {name:"يوتيوب",url:"https://www.youtube.com",icon:"▶",color:"#e53935"},
+  {name:"سبوتيفاي",url:"https://open.spotify.com",icon:"♫",color:"#43a047"},
+  {name:"أنغامي",url:"https://play.anghami.com",icon:"🎵",color:"#5e35b1"},
+  {name:"شاهد",url:"https://shahid.mbc.net",icon:"📺",color:"#00acc1"},
+  {name:"نتفليكس",url:"https://www.netflix.com",icon:"N",color:"#b71c1c"},
+  {name:"القرآن",url:"https://quran.com",icon:"📖",color:"#2e7d32"},
+  {name:"جوجل",url:"https://www.google.com",icon:"G",color:"#1e88e5"},
+  {name:"الطقس",url:"https://www.windy.com",icon:"☀",color:"#fb8c00"}
+];
+const KEY="myscreen.apps.v1";
+let apps=load(), editing=false, pick=COLORS[5];
+
+function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return DEFAULTS.slice()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(apps))}catch(e){}}
+
+function render(){
+  const g=document.getElementById("grid");g.innerHTML="";
+  document.body.classList.toggle("editing",editing);
+  apps.forEach((a,i)=>{
+    const t=document.createElement("a");t.className="tile";t.href=a.url;t.style.color="inherit";t.style.textDecoration="none";
+    t.innerHTML=`<div class="del">×</div><div class="icon" style="background:${a.color}">${esc(a.icon||a.name[0])}</div><div class="name">${esc(a.name)}</div>`;
+    t.onclick=e=>{
+      if(editing){e.preventDefault();if(e.target.classList.contains("del")){apps.splice(i,1);save();render()}}
+    };
+    g.appendChild(t);
+  });
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function tick(){
+  const d=new Date();
+  document.getElementById("clock").textContent=d.toLocaleTimeString("ar-AE",{hour:"2-digit",minute:"2-digit"});
+  document.getElementById("date").textContent=d.toLocaleDateString("ar-AE",{weekday:"long",day:"numeric",month:"long"});
+}
+setInterval(tick,1000);tick();
+
+const sw=document.getElementById("colors");
+COLORS.forEach(c=>{const b=document.createElement("div");b.className="sw"+(c===pick?" on":"");b.style.background=c;b.onclick=()=>{pick=c;[...sw.children].forEach(x=>x.classList.remove("on"));b.classList.add("on")};sw.appendChild(b)});
+
+const modal=document.getElementById("modal");
+document.getElementById("addBtn").onclick=()=>{modal.classList.add("open");document.getElementById("fName").focus()};
+document.getElementById("cancelBtn").onclick=()=>modal.classList.remove("open");
+document.getElementById("saveBtn").onclick=()=>{
+  const name=fName.value.trim();let url=fUrl.value.trim();
+  if(!name||!url)return;
+  if(!/^https?:\/\//i.test(url))url="https://"+url;
+  apps.push({name,url,icon:fIcon.value.trim(),color:pick});save();render();
+  fName.value=fUrl.value=fIcon.value="";modal.classList.remove("open");
+};
+document.getElementById("editBtn").onclick=e=>{editing=!editing;e.target.textContent=editing?"تم":"تعديل";render()};
+render();
+</script>
+</body>
+</html>
